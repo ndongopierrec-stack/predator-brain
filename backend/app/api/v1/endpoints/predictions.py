@@ -192,6 +192,45 @@ def analyze_match(req: MatchAnalysisRequest):
     # Explications IA
     explanations = _generate_ai_explanations(req, probs, value_bets)
 
+    # Construire le bloc prediction (attendu par le frontend)
+    score_matrix_raw = probs.get("score_matrix", {})
+    # Convertir dict {"1-0": 0.12} → liste 2D [[p00, p01,...], [p10,...], ...]
+    if isinstance(score_matrix_raw, dict):
+        size = 6
+        matrix_2d = [[0.0] * size for _ in range(size)]
+        for key, val in score_matrix_raw.items():
+            try:
+                h, a = map(int, str(key).split("-"))
+                if h < size and a < size:
+                    matrix_2d[h][a] = float(val)
+            except Exception:
+                pass
+    elif isinstance(score_matrix_raw, list):
+        matrix_2d = score_matrix_raw
+    else:
+        matrix_2d = []
+
+    prediction_block = {
+        "prob_home":     probs["prob_home"],
+        "prob_draw":     probs["prob_draw"],
+        "prob_away":     probs["prob_away"],
+        "prob_over_15":  probs.get("prob_over_15", 0.75),
+        "prob_over_25":  probs.get("prob_over_25", 0.55),
+        "prob_over_35":  probs.get("prob_over_35", 0.32),
+        "prob_under_15": probs.get("prob_under_15", 0.25),
+        "prob_under_25": probs.get("prob_under_25", 0.45),
+        "prob_under_35": probs.get("prob_under_35", 0.68),
+        "prob_btts_yes": probs.get("prob_btts_yes", 0.52),
+        "prob_btts_no":  probs.get("prob_btts_no", 0.48),
+        "lambda_home":   probs.get("lambda_home", 1.4),
+        "lambda_away":   probs.get("lambda_away", 1.1),
+        "most_likely_score": probs.get("most_likely_score", "1-0"),
+        "score_matrix":  matrix_2d,
+        "confidence":    probs.get("confidence", 0.5),
+        "dc_known":      probs.get("dc_known", False),
+        "is_fallback":   probs.get("is_fallback", True),
+    }
+
     return {
         "match": {
             "home_team": req.home_team,
@@ -199,32 +238,33 @@ def analyze_match(req: MatchAnalysisRequest):
             "league": req.league,
             "match_date": req.match_date,
         },
+        # Alias pour le frontend (prediction = même chose que probabilities)
+        "prediction": prediction_block,
+        # Rétrocompat
         "probabilities": {
-            "home":      probs["prob_home"],
-            "draw":      probs["prob_draw"],
-            "away":      probs["prob_away"],
-            "over_15":   probs.get("prob_over_15", 0.75),
-            "over_25":   probs.get("prob_over_25", 0.55),
-            "over_35":   probs.get("prob_over_35", 0.32),
-            "under_25":  probs.get("prob_under_25", 0.45),
-            "btts_yes":  probs.get("prob_btts_yes", 0.52),
-            "btts_no":   probs.get("prob_btts_no", 0.48),
+            "home":     probs["prob_home"],
+            "draw":     probs["prob_draw"],
+            "away":     probs["prob_away"],
+            "over_25":  probs.get("prob_over_25", 0.55),
+            "under_25": probs.get("prob_under_25", 0.45),
+            "btts_yes": probs.get("prob_btts_yes", 0.52),
+            "btts_no":  probs.get("prob_btts_no", 0.48),
         },
         "expected_goals": {
             "lambda_home": probs.get("lambda_home", 1.4),
             "lambda_away": probs.get("lambda_away", 1.1),
         },
         "score_prediction": {
-            "most_likely":   probs.get("most_likely_score", "1-0"),
-            "score_matrix":  probs.get("score_matrix", {}),
+            "most_likely":  probs.get("most_likely_score", "1-0"),
+            "score_matrix": score_matrix_raw,
         },
         "fair_odds": fair_odds,
         "value_bets": value_bets,
         "ai_analysis": explanations,
         "model_meta": {
-            "dc_known": probs.get("dc_known", False),
+            "dc_known":    probs.get("dc_known", False),
             "is_fallback": probs.get("is_fallback", True),
-            "model": "Dixon-Coles + Ensemble",
+            "model":       "Dixon-Coles + Ensemble",
         },
     }
 
@@ -349,6 +389,128 @@ def generate_ticket(req: TicketRequest):
                 ],
             }
             for t in tickets
+        ],
+    }
+
+
+@router.get("/model-quality")
+def model_quality():
+    """
+    Rapport de qualité du modèle Dixon-Coles.
+    Retourne les métriques de calibration, la couverture par championnat,
+    et des avertissements si les données sont insuffisantes.
+    """
+    from app.core.model_registry import registry
+    from datetime import datetime
+
+    if not registry.is_trained or registry.dc is None:
+        return {
+            "is_trained": False,
+            "warning": "MODÈLE NON ENTRAÎNÉ — les prédictions utilisent des valeurs par défaut (46%/26%/28%).",
+            "warning_level": "CRITICAL",
+            "recommendations": [
+                "Placez des CSV football-data.co.uk dans data/raw/",
+                "Cliquez sur 'Réentraîner' dans les Paramètres",
+                "N'utilisez PAS ce logiciel pour parier sans données réelles",
+            ],
+        }
+
+    dc = registry.dc
+    df = registry._df_cache
+
+    # ── Métriques de base ─────────────────────────────────────────────────────
+    n_teams   = len(dc.teams_)
+    n_matches = registry.n_matches
+    leagues   = registry.training_leagues
+
+    # ── Statistiques du dataset ───────────────────────────────────────────────
+    dataset_stats = {}
+    if df is not None and not df.empty:
+        dataset_stats = {
+            "total_matches":  len(df),
+            "date_from":      str(df["match_date"].min().date()) if "match_date" in df.columns else "?",
+            "date_to":        str(df["match_date"].max().date()) if "match_date" in df.columns else "?",
+            "avg_goals":      round(df["total_goals"].mean(), 2) if "total_goals" in df.columns else None,
+            "home_win_rate":  round((df["ftr"] == "H").mean() * 100, 1) if "ftr" in df.columns else None,
+            "draw_rate":      round((df["ftr"] == "D").mean() * 100, 1) if "ftr" in df.columns else None,
+            "away_win_rate":  round((df["ftr"] == "A").mean() * 100, 1) if "ftr" in df.columns else None,
+            "over_25_rate":   round(df["over_25"].mean() * 100, 1) if "over_25" in df.columns else None,
+            "btts_rate":      round(df["btts"].mean() * 100, 1) if "btts" in df.columns else None,
+        }
+
+    # ── Performance par championnat ────────────────────────────────────────────
+    by_league = {}
+    if df is not None and "league" in df.columns:
+        for lg, grp in df.groupby("league"):
+            teams_in_league = set(grp["team_home"].tolist() + grp["team_away"].tolist())
+            known = sum(1 for t in teams_in_league if t in dc.attack_)
+            by_league[str(lg)] = {
+                "matches":    len(grp),
+                "teams":      len(teams_in_league),
+                "known_teams": known,
+                "coverage_pct": round(known / len(teams_in_league) * 100, 0) if teams_in_league else 0,
+            }
+
+    # ── Paramètres du modèle ──────────────────────────────────────────────────
+    model_params = {
+        "gamma":  round(dc.gamma_, 4),   # avantage domicile
+        "rho":    round(dc.rho_, 4),     # correction DC (attendu ≈ -0.13)
+        "n_teams": n_teams,
+        "n_matches_trained": n_matches,
+    }
+
+    # Top 5 attaques et défenses
+    top_attacks  = sorted(dc.attack_.items(),  key=lambda x: x[1], reverse=True)[:5]
+    top_defenses = sorted(dc.defense_.items(), key=lambda x: x[1])[:5]  # plus bas = meilleur
+
+    # ── Avertissements ─────────────────────────────────────────────────────────
+    warnings = []
+    warning_level = "OK"
+
+    if n_matches < 500:
+        warnings.append(f"⚠️ Seulement {n_matches} matchs d'entraînement — minimum recommandé : 2 000+")
+        warning_level = "WARNING"
+    if n_teams < 40:
+        warnings.append(f"⚠️ Seulement {n_teams} équipes — peu de couverture internationale")
+        warning_level = "WARNING"
+    if n_matches < 200:
+        warnings.append("🔴 CRITIQUE : données insuffisantes — NE PAS UTILISER pour paris réels")
+        warning_level = "CRITICAL"
+    if len(leagues) < 3:
+        warnings.append("⚠️ Moins de 3 championnats — les prédictions hors-données sont peu fiables")
+    if abs(dc.rho_) < 0.01:
+        warnings.append("⚠️ Paramètre ρ proche de zéro — optimisation possiblement non convergée")
+
+    if not warnings:
+        warnings.append("✅ Modèle correctement calibré sur des données suffisantes")
+
+    return {
+        "is_trained":     True,
+        "warning_level":  warning_level,
+        "warnings":       warnings,
+        "model_params":   model_params,
+        "dataset":        dataset_stats,
+        "leagues":        leagues,
+        "by_league":      by_league,
+        "top_teams": {
+            "attack":  [{"team": t, "score": round(s, 3)} for t, s in top_attacks],
+            "defense": [{"team": t, "score": round(s, 3)} for t, s in top_defenses],
+        },
+        "interpretation": {
+            "gamma_meaning": (
+                f"Avantage domicile: +{dc.gamma_:.2f} (élevé > 0.4, normal ≈ 0.2-0.35)"
+                if dc.gamma_ > 0.2 else f"Avantage domicile faible: {dc.gamma_:.2f}"
+            ),
+            "rho_meaning": (
+                f"Correction DC ρ={dc.rho_:.3f} — correction active sur 0-0/1-0/0-1/1-1"
+                if dc.rho_ < -0.05 else "ρ proche de 0 — correction Dixon-Coles peu active"
+            ),
+        },
+        "recommendations": [
+            "✅ Utiliser les marchés 1X2 sur les équipes avec coverage=100%",
+            "⚠️ Éviter les équipes non présentes dans le modèle (dc_known=false)",
+            "⚠️ Ne jamais miser plus de 2% du bankroll par pari en mode débutant",
+            "✅ Vérifier CLV > 0 sur 30+ paris avant d'augmenter les mises",
         ],
     }
 

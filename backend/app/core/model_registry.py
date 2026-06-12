@@ -66,10 +66,22 @@ class ModelRegistry:
         Peut prendre 10-60 secondes selon la quantité de données.
         """
         if csv_dir is None:
-            # En production Railway: données non disponibles → mode fallback
-            # En local: pointer vers D:/predator_project/data/raw
-            _local_data = Path(__file__).resolve().parents[4] / "data" / "raw"
-            csv_dir = str(_local_data) if _local_data.exists() else ""
+            # Chercher les données dans plusieurs emplacements possibles
+            backend_dir = Path(__file__).resolve().parents[2]  # backend/
+            candidates = [
+                backend_dir.parent / "data" / "raw",    # predator_brain/data/raw (local dev)
+                backend_dir / "data" / "raw",            # backend/data/raw
+                Path("/app/data/raw"),                   # Railway /app/
+                Path("data/raw"),                        # CWD relatif
+            ]
+            csv_dir = ""
+            for candidate in candidates:
+                if candidate.exists() and any(candidate.glob("*.csv")):
+                    csv_dir = str(candidate)
+                    logger.info(f"[REGISTRY] Données trouvées: {csv_dir}")
+                    break
+            if not csv_dir:
+                logger.warning("[REGISTRY] Aucun répertoire de données trouvé — mode fallback")
 
         try:
             if not csv_dir or not Path(csv_dir).exists():

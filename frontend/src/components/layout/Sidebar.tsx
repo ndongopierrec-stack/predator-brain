@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Zap, BarChart2, TrendingUp, Ticket,
+  LayoutDashboard, Zap, TrendingUp, Ticket,
   FlaskConical, Wallet, History, Target, Settings, Brain,
-  Activity,
+  Activity, ShieldCheck,
 } from "lucide-react";
 
 const NAV = [
@@ -14,12 +14,13 @@ const NAV = [
   { href: "/predictions",      icon: Brain,           label: "Prédictions",     tag: null },
   { href: "/odds-comparison",  icon: TrendingUp,      label: "Cotes",           tag: null },
   { href: "/ticket-builder",   icon: Ticket,          label: "Tickets",         tag: null },
-  null, // separator
+  null,
   { href: "/backtesting",      icon: FlaskConical,    label: "Backtesting",     tag: null },
   { href: "/bankroll",         icon: Wallet,          label: "Bankroll",        tag: null },
   { href: "/clv",              icon: Target,          label: "CLV",             tag: "PRO" },
   { href: "/history",          icon: History,         label: "Historique",      tag: null },
   null,
+  { href: "/model-quality",    icon: ShieldCheck,     label: "Qualité Modèle",  tag: null },
   { href: "/settings",         icon: Settings,        label: "Paramètres",      tag: null },
 ];
 

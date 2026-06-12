@@ -123,6 +123,7 @@ export interface CLVSummary {
 
 export const predictionsApi = {
   modelStatus:  ()                => api.get<ModelStatus>("/predictions/model-status"),
+  modelQuality: ()                => api.get("/predictions/model-quality"),
   retrain:      (csv_dir?: string) => api.post("/predictions/retrain", { csv_dir }),
   analyze:      (req: MatchAnalysisRequest) => api.post<AnalysisResult>("/predictions/analyze", req),
   scanValueBets:(matches: any[], min_edge = 0.03, top_n = 20) =>
