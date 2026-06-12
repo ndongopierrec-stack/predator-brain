@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Zap, TrendingUp, Ticket,
   FlaskConical, Wallet, History, Target, Settings, Brain,
-  Activity, ShieldCheck,
+  Activity, ShieldCheck, FileSearch,
 } from "lucide-react";
 
 const NAV = [
@@ -21,6 +21,7 @@ const NAV = [
   { href: "/history",          icon: History,         label: "Historique",      tag: null },
   null,
   { href: "/model-quality",    icon: ShieldCheck,     label: "Qualité Modèle",  tag: null },
+  { href: "/audit",            icon: FileSearch,      label: "Audit Fonctionnel", tag: "NEW" },
   { href: "/settings",         icon: Settings,        label: "Paramètres",      tag: null },
 ];
 

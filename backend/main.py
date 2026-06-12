@@ -9,6 +9,7 @@ Docs : http://localhost:8001/docs
 
 import sys
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -30,27 +31,33 @@ logger = logging.getLogger("predator.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Démarrage : entraîne le modèle si des données CSV sont disponibles."""
+    """Démarrage : lance l'entraînement du modèle en arrière-plan (non-bloquant)."""
     logger.info("=" * 60)
     logger.info("  PREDATOR BRAIN API — Démarrage (local)")
     logger.info("=" * 60)
 
-    try:
-        from app.core.model_registry import registry
-        logger.info("[STARTUP] Tentative d'entraînement Dixon-Coles...")
-        result = registry.train_from_csv()
-        if result["success"]:
-            logger.info(
-                f"[STARTUP] ✓ Modèle prêt — {result['n_matches']} matchs, "
-                f"{result['n_teams']} équipes"
-            )
-        else:
-            logger.warning(
-                f"[STARTUP] Mode fallback : {result.get('error', 'pas de données')}. "
-                "Les endpoints répondent avec valeurs par défaut."
-            )
-    except Exception as e:
-        logger.error(f"[STARTUP] Erreur init: {e}", exc_info=True)
+    def _train_background():
+        try:
+            from app.core.model_registry import registry
+            logger.info("[STARTUP] Entraînement Dixon-Coles en arrière-plan...")
+            result = registry.train_from_csv()
+            if result["success"]:
+                logger.info(
+                    f"[STARTUP] ✓ Modèle prêt — {result['n_matches']} matchs, "
+                    f"{result['n_teams']} équipes"
+                )
+            else:
+                logger.warning(
+                    f"[STARTUP] Mode fallback : {result.get('error', 'pas de données')}. "
+                    "Les endpoints répondent avec valeurs par défaut."
+                )
+        except Exception as e:
+            logger.error(f"[STARTUP] Erreur init: {e}", exc_info=True)
+
+    # Lancer l'entraînement dans un thread daemon — uvicorn répond immédiatement
+    t = threading.Thread(target=_train_background, daemon=True, name="dc-trainer")
+    t.start()
+    logger.info("[STARTUP] API disponible immédiatement — modèle en cours d'entraînement...")
 
     yield
 
@@ -106,12 +113,14 @@ from app.api.v1.endpoints.predictions import router as pred_router
 from app.api.v1.endpoints.backtesting  import router as bt_router
 from app.api.v1.endpoints.bankroll     import router as bk_router
 from app.api.v1.endpoints.clv          import router as clv_router
+from app.api.v1.endpoints.ou_btts      import router as ou_btts_router
 
 PREFIX = "/api/v1"
-app.include_router(pred_router, prefix=PREFIX)
-app.include_router(bt_router,   prefix=PREFIX)
-app.include_router(bk_router,   prefix=PREFIX)
-app.include_router(clv_router,  prefix=PREFIX)
+app.include_router(pred_router,    prefix=PREFIX)
+app.include_router(bt_router,      prefix=PREFIX)
+app.include_router(bk_router,      prefix=PREFIX)
+app.include_router(clv_router,     prefix=PREFIX)
+app.include_router(ou_btts_router, prefix=PREFIX)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -148,5 +157,7 @@ def root():
             "clv":          "GET  /api/v1/clv/summary",
             "clv_record":   "POST /api/v1/clv/record-bet",
             "ticket":       "POST /api/v1/predictions/ticket",
+            "ou_btts":      "POST /api/v1/ou-btts/analyze",
+            "ou_btts_scan": "POST /api/v1/ou-btts/scan",
         },
     }
