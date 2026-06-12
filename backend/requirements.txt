@@ -1,0 +1,25 @@
+# Predator Brain Backend — Production
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Data science
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+
+# ML ensemble
+xgboost>=2.0.0
+lightgbm>=4.0.0
+
+# Base de données
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+psycopg2-binary>=2.9.0
+
+# Utils
+python-dotenv>=1.0.0
+requests>=2.31.0
+httpx>=0.26.0
