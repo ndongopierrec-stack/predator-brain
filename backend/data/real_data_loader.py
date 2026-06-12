@@ -184,7 +184,15 @@ class RealDataLoader:
                     if row["score_home"] < row["score_away"]:  return "A"
                     return "D"
                 df["ftr"] = df.apply(result, axis=1)
-            df["ftr"] = df["ftr"].str.upper().str.strip()
+            # Forcer string avant .str (les anciens CSV ont parfois des floats/NaN)
+            df["ftr"] = df["ftr"].astype(str).str.upper().str.strip()
+            # "NAN" → recalculer depuis les scores
+            bad_ftr = df["ftr"].isin(["NAN", "", "NONE", "NA"])
+            if bad_ftr.any():
+                df.loc[bad_ftr, "ftr"] = df[bad_ftr].apply(
+                    lambda r: "H" if r["score_home"] > r["score_away"] else
+                              ("A" if r["score_home"] < r["score_away"] else "D"), axis=1
+                )
 
             logger.info(
                 f"[LOADER] {path.name}: {len(df)} matchs | "

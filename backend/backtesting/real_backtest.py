@@ -30,8 +30,8 @@ class BetRecord:
     home_team: str
     away_team: str
     league: str
-    market: str          # "1X2_H", "1X2_D", "1X2_A", "OVER_25", "UNDER_25"
-    selection: str       # "H", "D", "A", "OVER", "UNDER"
+    market: str          # "1X2_H", "1X2_D", "1X2_A", "OVER_25", "UNDER_25", "BTTS_Y", etc.
+    selection: str       # "H", "D", "A", "OVER", "UNDER", "BTTS_Y", "BTTS_N"
     odds: float
     stake: float
     prob_model: float
@@ -150,7 +150,13 @@ class RealBacktest:
             away = str(row.get("team_away", ""))
             league = str(row.get("league", ""))
             ftr  = str(row.get("ftr", "D"))
-            total_goals = int(row.get("total_goals", 0) or 0)
+            # Calculer total_goals depuis score_home/score_away si disponible
+            score_home = row.get("score_home")
+            score_away = row.get("score_away")
+            if pd.notna(score_home) and pd.notna(score_away):
+                total_goals = int(score_home or 0) + int(score_away or 0)
+            else:
+                total_goals = int(row.get("total_goals", 0) or 0)
 
             if not home or not away:
                 continue
@@ -165,16 +171,17 @@ class RealBacktest:
             prob_d = probs.get("prob_draw", 0.0)
             prob_a = probs.get("prob_away", 0.0)
 
-            # Marchés à tester
-            markets = self._build_markets(row, prob_h, prob_d, prob_a, home_only)
+            # Marchés à tester (on passe probs complet pour O/U et BTTS)
+            markets = self._build_markets(row, prob_h, prob_d, prob_a, home_only, probs)
 
             for market_key, (prob_model, odds, selection) in markets.items():
                 if prob_model < min_confidence or odds < 1.05:
                     continue
 
-                # Calcul de l'edge
+                # Calcul de l'edge — formule standard value bet :
+                # edge = prob_modèle × cote - 1  (>0 = value positive)
                 implied_prob = 1.0 / odds
-                edge = prob_model - implied_prob
+                edge = prob_model * odds - 1.0
 
                 if edge < min_edge:
                     continue
@@ -371,14 +378,20 @@ class RealBacktest:
         row: pd.Series,
         prob_h: float, prob_d: float, prob_a: float,
         home_only: bool = False,
+        probs: Optional[dict] = None,
     ) -> Dict[str, tuple]:
         """
         Construit les marchés disponibles pour un match.
 
+        Utilise les probabilités DC directement quand disponibles (lambda_home/away),
+        sinon repli sur l'estimation Poisson bivariable depuis les probs 1X2.
+
         Returns:
             Dict {market_key: (prob_model, odds, selection)}
         """
+        from app.services.engines.ou_btts_engine import OUBTTSEngine
         markets = {}
+        probs = probs or {}
 
         # ── 1X2 ──────────────────────────────────────────────────────────────
         if pd.notna(row.get("odds_home")) and row.get("odds_home", 0) > 1.05:
@@ -389,42 +402,126 @@ class RealBacktest:
             if pd.notna(row.get("odds_away")) and row.get("odds_away", 0) > 1.05:
                 markets["1X2_A"] = (prob_a, float(row["odds_away"]), "A")
 
-        # ── Over/Under 2.5 ────────────────────────────────────────────────────
         if not home_only:
-            # Calculer prob over/under depuis les lambdas Poisson si disponible
-            prob_over25 = self._poisson_over25(prob_h, prob_d, prob_a)
-            prob_under25 = 1.0 - prob_over25
+            # ── Calcul O/U et BTTS via Poisson bivariable (DC ou estimation) ──
+            engine = OUBTTSEngine()
 
+            # Priorité 1 : lambdas directs du modèle DC (précis)
+            lam_h = probs.get("lambda_home")
+            lam_a = probs.get("lambda_away")
+            dc_known = probs.get("dc_known", False)
+
+            if lam_h and lam_a and lam_h > 0 and lam_a > 0:
+                # Prédiction précise avec lambdas DC
+                ou_pred = engine.predict(
+                    lambda_home=lam_h,
+                    lambda_away=lam_a,
+                    dc_known=dc_known,
+                )
+            else:
+                # Priorité 2 : prob O/U déjà calculées par le modèle DC
+                if probs.get("prob_over_25") is not None:
+                    ou_pred = None  # on utilisera directement les probs
+                else:
+                    # Priorité 3 : estimation depuis probs 1X2 (dernier recours)
+                    ou_pred = engine.predict_from_1x2(prob_h, prob_d, prob_a)
+
+            # Résoudre les probabilités O/U
+            if ou_pred is not None:
+                p_over15  = ou_pred.prob_over_15
+                p_over25  = ou_pred.prob_over_25
+                p_over35  = ou_pred.prob_over_35
+                p_btts    = ou_pred.prob_btts_yes
+            else:
+                # Utiliser les probs directement du modèle DC
+                p_over15  = probs.get("prob_over_15", 0.0)
+                p_over25  = probs.get("prob_over_25", 0.51)
+                p_over35  = probs.get("prob_over_35", 0.0)
+                p_btts    = probs.get("prob_btts_yes", 0.0)
+
+            p_under25 = 1.0 - p_over25
+
+            # ── Over/Under 1.5 ────────────────────────────────────────────────
+            odds_over15 = row.get("odds_over15") or row.get("odds_over_15")
+            if pd.notna(odds_over15) and float(odds_over15 or 0) > 1.05:
+                markets["OVER_15"] = (p_over15, float(odds_over15), "OVER")
+
+            # ── Over/Under 2.5 ────────────────────────────────────────────────
             if pd.notna(row.get("odds_over25")) and row.get("odds_over25", 0) > 1.05:
-                markets["OVER_25"] = (prob_over25, float(row["odds_over25"]), "OVER")
+                markets["OVER_25"] = (p_over25, float(row["odds_over25"]), "OVER")
             if pd.notna(row.get("odds_under25")) and row.get("odds_under25", 0) > 1.05:
-                markets["UNDER_25"] = (prob_under25, float(row["odds_under25"]), "UNDER")
+                markets["UNDER_25"] = (p_under25, float(row["odds_under25"]), "UNDER")
+
+            # ── Pinnacle odds (plus serrés, meilleure référence) ──────────────
+            if pd.notna(row.get("odds_over25_c")) and row.get("odds_over25_c", 0) > 1.05:
+                markets["OVER_25_PS"] = (p_over25, float(row["odds_over25_c"]), "OVER")
+            if pd.notna(row.get("odds_under25_c")) and row.get("odds_under25_c", 0) > 1.05:
+                markets["UNDER_25_PS"] = (p_under25, float(row["odds_under25_c"]), "UNDER")
+
+            # ── Over 3.5 ─────────────────────────────────────────────────────
+            odds_over35 = row.get("odds_over35") or row.get("odds_over_35")
+            if pd.notna(odds_over35) and float(odds_over35 or 0) > 1.05:
+                markets["OVER_35"] = (p_over35, float(odds_over35), "OVER")
+
+            # ── BTTS (Both Teams To Score) ────────────────────────────────────
+            if p_btts > 0:
+                odds_btts_y = row.get("odds_btts_yes") or row.get("odds_bts_yes") or row.get("BbMx>2.5")
+                odds_btts_n = row.get("odds_btts_no")  or row.get("odds_bts_no")
+
+                if pd.notna(odds_btts_y) and float(odds_btts_y or 0) > 1.05:
+                    markets["BTTS_Y"] = (p_btts, float(odds_btts_y), "BTTS_Y")
+                if pd.notna(odds_btts_n) and float(odds_btts_n or 0) > 1.05:
+                    markets["BTTS_N"] = (1.0 - p_btts, float(odds_btts_n), "BTTS_N")
 
         return markets
-
-    def _poisson_over25(self, prob_h: float, prob_d: float, prob_a: float) -> float:
-        """
-        Estime prob(>2.5 buts) à partir des probs 1X2 via heuristique calibrée.
-        (Approximation sans les lambdas directs)
-        """
-        # Heuristique : les matchs très ouverts (faible prob de nul) ont plus de buts
-        # Calibrée sur les données football-data.co.uk (over 2.5 ≈ 51% en moyenne)
-        base = 0.51
-        # Équilibré ou nul fort → moins de buts
-        if prob_d > 0.30:
-            return base - 0.05
-        # Match ouvert (1 favori clair) → plus de buts
-        if max(prob_h, prob_a) > 0.60:
-            return base + 0.06
-        return base
 
     @staticmethod
     def _bet_won(market_key: str, selection: str, ftr: str, total_goals: int, row: pd.Series) -> bool:
         """Détermine si le pari est gagnant selon le résultat réel."""
         if market_key.startswith("1X2"):
             return ftr == selection
-        elif market_key == "OVER_25":
+        elif market_key in ("OVER_15",):
+            return total_goals > 1
+        elif market_key in ("OVER_25", "OVER_25_PS"):
             return total_goals > 2
-        elif market_key == "UNDER_25":
+        elif market_key in ("UNDER_25", "UNDER_25_PS"):
             return total_goals <= 2
+        elif market_key == "OVER_35":
+            return total_goals > 3
+        elif market_key == "UNDER_35":
+            return total_goals <= 3
+        elif market_key == "BTTS_Y":
+            # Les deux équipes ont marqué
+            # Note: on ne peut pas faire `score or -1` car score=0 est falsy
+            raw_h = row.get("score_home")
+            raw_a = row.get("score_away")
+            if raw_h is not None and raw_a is not None:
+                sh = int(raw_h)
+                sa = int(raw_a)
+                return sh >= 1 and sa >= 1
+            # Fallback si scores non disponibles : heuristique via total + FTR
+            # Un match H ou A avec total >= 2 a probablement eu BTTS (mais pas garanti)
+            # Approximation conservatrice : on skip ce cas (retourne False = pas gagné)
+            # On évite les faux positifs (2-0 serait quand même considéré non-BTTS)
+            if total_goals < 2:
+                return False
+            # Si on a un nul, les 2 équipes ont forcément marqué
+            if ftr == "D":
+                return True
+            # Victoire/défaite avec >= 2 buts : BTTS ssi score n'est pas 2-0 ou 3-0...
+            # Sans scores séparés on ne peut pas être sûr — on skip (False = prudent)
+            return False
+        elif market_key == "BTTS_N":
+            raw_h = row.get("score_home")
+            raw_a = row.get("score_away")
+            if raw_h is not None and raw_a is not None:
+                sh = int(raw_h)
+                sa = int(raw_a)
+                return sh == 0 or sa == 0
+            # Fallback : nul 0-0 ou victoire large → BTTS_N probable
+            if ftr == "D" and total_goals == 0:
+                return True
+            if total_goals < 2:
+                return True  # Au moins une équipe a 0 but
+            return False  # Pas assez d'info
         return False

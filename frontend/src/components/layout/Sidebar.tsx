@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Zap, TrendingUp, Ticket,
   FlaskConical, Wallet, History, Target, Settings, Brain,
-  Activity, ShieldCheck, FileSearch,
+  Activity, ShieldCheck, FileSearch, TestTube2,
 } from "lucide-react";
 
 const NAV = [
@@ -16,6 +16,7 @@ const NAV = [
   { href: "/ticket-builder",   icon: Ticket,          label: "Tickets",         tag: null },
   null,
   { href: "/backtesting",      icon: FlaskConical,    label: "Backtesting",     tag: null },
+  { href: "/strategy-lab",    icon: TestTube2,       label: "Strategy Lab",    tag: "WF" },
   { href: "/bankroll",         icon: Wallet,          label: "Bankroll",        tag: null },
   { href: "/clv",              icon: Target,          label: "CLV",             tag: "PRO" },
   { href: "/history",          icon: History,         label: "Historique",      tag: null },
