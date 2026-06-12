@@ -171,7 +171,11 @@ export const clvApi = {
 };
 
 export const healthApi = {
-  check: () => api.get("/health").catch(() => ({ data: { status: "offline" } })),
+  // /health est à la racine, pas sous /api/v1
+  check: () =>
+    axios
+      .get((BASE || "http://localhost:8001/api/v1").replace("/api/v1", "") + "/health", { timeout: 5000 })
+      .catch(() => ({ data: { status: "offline" } })),
 };
 
 export default api;
