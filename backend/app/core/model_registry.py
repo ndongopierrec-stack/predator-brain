@@ -4,7 +4,6 @@ Chargé une fois au démarrage, utilisé par tous les endpoints.
 """
 
 import os
-import sys
 import logging
 import pandas as pd
 from pathlib import Path
@@ -13,9 +12,6 @@ from threading import Lock
 
 logger = logging.getLogger("predator.registry")
 
-# Ajouter le chemin du projet parent dans sys.path
-_BASE = Path(__file__).resolve().parents[5]  # D:/predator_project
-sys.path.insert(0, str(_BASE))
 
 from app.services.models.dixon_coles import (
     DixonColesModel, EnsemblePredictor
@@ -70,11 +66,16 @@ class ModelRegistry:
         Peut prendre 10-60 secondes selon la quantité de données.
         """
         if csv_dir is None:
-            csv_dir = str(_BASE / "data" / "raw")
+            # En production Railway: données non disponibles → mode fallback
+            # En local: pointer vers D:/predator_project/data/raw
+            _local_data = Path(__file__).resolve().parents[4] / "data" / "raw"
+            csv_dir = str(_local_data) if _local_data.exists() else ""
 
         try:
+            if not csv_dir or not Path(csv_dir).exists():
+                return {"success": False, "error": f"Dossier CSV inexistant: {csv_dir}"}
+
             # Charger les CSV football-data.co.uk
-            sys.path.insert(0, str(_BASE))
             from data.real_data_loader import RealDataLoader
 
             logger.info(f"[REGISTRY] Chargement des CSV depuis {csv_dir}...")

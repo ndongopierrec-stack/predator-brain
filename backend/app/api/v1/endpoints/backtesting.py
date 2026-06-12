@@ -8,7 +8,6 @@ Endpoints:
 """
 
 import logging
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException
@@ -17,9 +16,6 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger("predator.api.backtest")
 router = APIRouter(prefix="/backtest", tags=["Backtesting"])
 
-# Ajouter le chemin du projet parent
-_BASE = Path(__file__).resolve().parents[6]
-sys.path.insert(0, str(_BASE))
 
 
 class BacktestRequest(BaseModel):
