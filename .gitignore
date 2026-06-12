@@ -16,6 +16,8 @@ node_modules/
 out/
 .env.local
 .env.*.local
+tsconfig.tsbuildinfo
+*.tsbuildinfo
 
 # Données sensibles
 *.env
