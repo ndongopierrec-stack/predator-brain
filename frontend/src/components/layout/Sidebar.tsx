@@ -5,25 +5,26 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Zap, TrendingUp, Ticket,
   FlaskConical, Wallet, History, Target, Settings, Brain,
-  Activity, ShieldCheck, FileSearch, TestTube2,
+  Activity, ShieldCheck, FileSearch, TestTube2, BarChart2,
 } from "lucide-react";
 
 const NAV = [
-  { href: "/dashboard",        icon: LayoutDashboard, label: "Dashboard",       tag: null },
-  { href: "/value-bets",       icon: Zap,             label: "Value Bets",      tag: "LIVE" },
-  { href: "/predictions",      icon: Brain,           label: "Prédictions",     tag: null },
-  { href: "/odds-comparison",  icon: TrendingUp,      label: "Cotes",           tag: null },
-  { href: "/ticket-builder",   icon: Ticket,          label: "Tickets",         tag: null },
+  { href: "/dashboard",         icon: LayoutDashboard, label: "Dashboard",         tag: null },
+  { href: "/value-bets",        icon: Zap,             label: "Value Bets",        tag: "LIVE" },
+  { href: "/predictions",       icon: Brain,           label: "Prédictions",       tag: null },
+  { href: "/odds-comparison",   icon: TrendingUp,      label: "Cotes",             tag: null },
+  { href: "/ticket-builder",    icon: Ticket,          label: "Tickets",           tag: null },
   null,
-  { href: "/backtesting",      icon: FlaskConical,    label: "Backtesting",     tag: null },
-  { href: "/strategy-lab",    icon: TestTube2,       label: "Strategy Lab",    tag: "WF" },
-  { href: "/bankroll",         icon: Wallet,          label: "Bankroll",        tag: null },
-  { href: "/clv",              icon: Target,          label: "CLV",             tag: "PRO" },
-  { href: "/history",          icon: History,         label: "Historique",      tag: null },
+  { href: "/backtesting",       icon: FlaskConical,    label: "Backtesting",       tag: null },
+  { href: "/strategy-lab",      icon: TestTube2,       label: "Strategy Lab",      tag: "WF" },
+  { href: "/model-comparison",  icon: BarChart2,       label: "Comparaison V2",    tag: "NEW" },
+  { href: "/bankroll",          icon: Wallet,          label: "Bankroll",          tag: null },
+  { href: "/clv",               icon: Target,          label: "CLV",               tag: "PRO" },
+  { href: "/history",           icon: History,         label: "Historique",        tag: null },
   null,
-  { href: "/model-quality",    icon: ShieldCheck,     label: "Qualité Modèle",  tag: null },
-  { href: "/audit",            icon: FileSearch,      label: "Audit Fonctionnel", tag: "NEW" },
-  { href: "/settings",         icon: Settings,        label: "Paramètres",      tag: null },
+  { href: "/model-quality",     icon: ShieldCheck,     label: "Qualité Modèle",    tag: null },
+  { href: "/audit",             icon: FileSearch,      label: "Audit Fonctionnel", tag: null },
+  { href: "/settings",          icon: Settings,        label: "Paramètres",        tag: null },
 ];
 
 export function Sidebar() {

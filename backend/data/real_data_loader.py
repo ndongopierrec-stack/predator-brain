@@ -194,11 +194,14 @@ class RealDataLoader:
                               ("A" if r["score_home"] < r["score_away"] else "D"), axis=1
                 )
 
+            _lg   = df['league'].iloc[0] if len(df) > 0 and 'league' in df.columns else "?"
+            _dmin = df['match_date'].min().date() if 'match_date' in df.columns and len(df) > 0 else "?"
+            _dmax = df['match_date'].max().date() if 'match_date' in df.columns and len(df) > 0 else "?"
             logger.info(
                 f"[LOADER] {path.name}: {len(df)} matchs | "
-                f"ligue={df['league'].iloc[0]} | "
+                f"ligue={_lg} | "
                 f"saison={season} | "
-                f"période={df['match_date'].min().date()} → {df['match_date'].max().date()}"
+                f"période={_dmin} → {_dmax}"
             )
             return df
 

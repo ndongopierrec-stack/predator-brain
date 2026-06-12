@@ -114,7 +114,8 @@ from app.api.v1.endpoints.backtesting  import router as bt_router
 from app.api.v1.endpoints.bankroll     import router as bk_router
 from app.api.v1.endpoints.clv          import router as clv_router
 from app.api.v1.endpoints.ou_btts      import router as ou_btts_router
-from app.api.v1.endpoints.validation   import router as val_router
+from app.api.v1.endpoints.validation       import router as val_router
+from app.api.v1.endpoints.model_comparison import router as cmp_router
 
 PREFIX = "/api/v1"
 app.include_router(pred_router,    prefix=PREFIX)
@@ -123,6 +124,7 @@ app.include_router(bk_router,      prefix=PREFIX)
 app.include_router(clv_router,     prefix=PREFIX)
 app.include_router(ou_btts_router, prefix=PREFIX)
 app.include_router(val_router,     prefix=PREFIX)
+app.include_router(cmp_router,     prefix=PREFIX)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
